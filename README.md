@@ -25,8 +25,8 @@ Real NAIP image patches look like this:
 The generated images are not yet convincing.
 The most realistic ones I've seen so far look vaguely like forest or pasture with bushes:
 
-![Generated image](examples/examples/generated_image_noise_1_epoch_44.png)
+![Generated image](examples/generated_image_noise_1_epoch_44.png)
 
-![Generated image](examples/examples/generated_image_noise_1_epoch_45.png)
+![Generated image](examples/generated_image_noise_1_epoch_45.png)
 
 TODO Have a look at the tips in https://arxiv.org/abs/1606.03498
