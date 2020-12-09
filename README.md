@@ -29,4 +29,10 @@ The most realistic ones I've seen so far look vaguely like forest or pasture wit
 
 ![Generated image](examples/generated_image_noise_1_epoch_45.png)
 
+Many iterations later, the generator is returning images that look like this:
+
+![Generated image](examples/generated_image_noise_0_epoch_197.png)
+
+![Generated image](examples/generated_image_noise_1_epoch_197.png)
+
 TODO Have a look at the tips in https://arxiv.org/abs/1606.03498
