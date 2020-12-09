@@ -4,7 +4,14 @@ import rasterio
 import tensorflow as tf
 import time
 
-from constants import PATCH_SHAPE
+from constants import (
+    BATCH_SIZE,
+    LEARNING_RATE_DISCRIMINATOR,
+    LEARNING_RATE_GENERATOR,
+    PATCH_SHAPE,
+    STEPS_PER_EPOCH,
+    LABEL_SMOOTHING_ALPHA,
+)
 from generator import get_naip_patch_generator
 from models import get_discriminator_model, get_generator_model
 
@@ -18,13 +25,15 @@ def discriminator_loss(real_output, fake_output):
     # "Fake" refers to the discriminator's output on the generator's images
 
     cross_entropy = tf.keras.losses.BinaryCrossentropy()
-    real_loss = cross_entropy(tf.ones_like(real_output), real_output)
+    real_loss = cross_entropy(LABEL_SMOOTHING_ALPHA * tf.ones_like(real_output), real_output)
     fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
 
     return real_loss + fake_loss
 
 
 def generator_loss(fake_output):
+
+    # TODO Try feature matching loss
 
     cross_entropy = tf.keras.losses.BinaryCrossentropy()
     return cross_entropy(tf.ones_like(fake_output), fake_output)
@@ -36,6 +45,7 @@ def train_step(
 ):
 
     # TODO Try GP noise with spatial correlation
+    # TODO Do results change with a single band of noise (instead of 4 bands of noise)?
     noise = tf.random.normal(image_batch.shape)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
@@ -61,13 +71,26 @@ def train_step(
     )
 
 
+def save_real_images(image_batch):
+
+    for image_index in range(image_batch.shape[0]):
+        filename = f"./examples/real_image_{image_index}.png"
+
+        real_image_rgb = image_batch[image_index, :, :, :3].astype(int)
+        plt.imsave(filename, real_image_rgb)
+
+
 def train(naip_patch_generator, epochs=200):
 
     discriminator = get_discriminator_model(PATCH_SHAPE)
     generator = get_generator_model(PATCH_SHAPE)
 
-    generator_optimizer = tf.keras.optimizers.Adam(1e-4)
-    discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
+    generator_optimizer = tf.keras.optimizers.Adam(
+        learning_rate=LEARNING_RATE_GENERATOR, beta_1=0.5
+    )
+    discriminator_optimizer = tf.keras.optimizers.Adam(
+        learning_rate=LEARNING_RATE_DISCRIMINATOR, beta_1=0.5
+    )
 
     # Generate images using the same noise (fixed input) at the end of each epoch
     noise_shape = (2,) + PATCH_SHAPE
@@ -76,9 +99,10 @@ def train(naip_patch_generator, epochs=200):
     for epoch in range(epochs):
 
         start = time.time()
-        for _ in range(64):
+        for _ in range(STEPS_PER_EPOCH):
 
             image_batch = next(naip_patch_generator)
+
             train_step(
                 image_batch,
                 discriminator,
@@ -91,25 +115,27 @@ def train(naip_patch_generator, epochs=200):
 
         if epoch == 0:
 
-            for image_index in range(image_batch.shape[0]):
-                filename = f"real_image_{image_index}.png"
-
-                real_image_rgb = image_batch[image_index, :, :, :3].astype(int)
-                plt.imsave(filename, real_image_rgb)
+            # Save a few real NAIP image patches for inspection
+            save_real_images(image_batch)
 
         # Generate an image with the generator (same noise every time)
         fake_image = generator(fixed_noise)
+        prediction = discriminator(fake_image)
         for image_index in range(noise_shape[0]):
             fake_image_rgb = fake_image[image_index, :, :, :3].numpy().astype(int)
-            filename = f"test_generated_image_noise_{image_index}_epoch_{epoch}.png"
+            filename = (
+                f"./examples/generated_image_noise_{image_index}_epoch_{epoch}.png"
+            )
             plt.imsave(filename, fake_image_rgb)
-
-        prediction = discriminator(fake_image)
-        print(f"discriminator's prediction for {filename}: {prediction.numpy()[0]}")
+            # The discriminator wants to push these predictions toward 0
+            print(
+                f"discriminator's prediction for {filename}: {prediction.numpy()[image_index]}"
+            )
 
         prediction_on_real_images = discriminator(image_batch)
+
         print(
-            f"discriminator's prediction on some real images:\n{prediction_on_real_images}"
+            f"discriminator's prediction on some real images (discriminator wants to push these towards 1):\n{prediction_on_real_images}"
         )
 
 
@@ -147,10 +173,10 @@ def main():
     naip_scenes = get_naip_scenes()
 
     naip_patch_generator = get_naip_patch_generator(
-        naip_scenes, PATCH_SHAPE, batch_size=8
+        naip_scenes, PATCH_SHAPE, batch_size=BATCH_SIZE
     )
 
-    # Array of shape (10, 256, 256, 4)
+    # Array of shape (BATCH_SIZE, 256, 256, 4)
     sample_batch = next(naip_patch_generator)
 
     train(naip_patch_generator)

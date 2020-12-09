@@ -1,3 +1,7 @@
+# Note: I'm trying a lower learning rate for the generator
+LEARNING_RATE_DISCRIMINATOR = 0.0002
+LEARNING_RATE_GENERATOR = 0.0001
+
 ADDITIONAL_FILTERS_PER_BLOCK = 0
 BASE_N_FILTERS = 32
 
@@ -7,3 +11,8 @@ N_BLOCKS = 4
 
 # Note: NAIP scenes have 4 bands (R B G NIR)
 PATCH_SHAPE = (256, 256, 4)
+
+BATCH_SIZE = 8
+STEPS_PER_EPOCH = 64
+
+LABEL_SMOOTHING_ALPHA = 0.95
