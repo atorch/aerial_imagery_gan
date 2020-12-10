@@ -1,3 +1,4 @@
+import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
@@ -80,7 +81,7 @@ def save_real_images(image_batch):
         plt.imsave(filename, real_image_rgb)
 
 
-def train(naip_patch_generator, epochs=200):
+def train(naip_patch_generator, epochs=300):
 
     discriminator = get_discriminator_model(PATCH_SHAPE)
     generator = get_generator_model(PATCH_SHAPE)
@@ -134,38 +135,27 @@ def train(naip_patch_generator, epochs=200):
 
         prediction_on_real_images = discriminator(image_batch)
 
+        description = f"discriminator wants to push these towards {LABEL_SMOOTHING_ALPHA}"
         print(
-            f"discriminator's prediction on some real images (discriminator wants to push these towards 1):\n{prediction_on_real_images}"
+            f"discriminator's prediction on real images ({description}):\n{prediction_on_real_images}"
         )
+
+
+def read_naip_values(naip_path):
+
+    print(f"Reading {naip_path}")
+    with rasterio.open(naip_path) as naip:
+
+        # Note: band order is (x, y, band) after call to np.swapaxes
+        X = np.swapaxes(naip.read(), 0, 2)
+
+    return X
 
 
 def get_naip_scenes():
 
-    # TODO Config
-    # TODO Have a look at these scenes in qgis
-    naip_paths = [
-        "./naip/m_4109258_se_15_1_20170723.tif",
-        "./naip/m_4009202_se_15_1_20170811.tif",
-        "./naip/m_4109007_ne_15_1_20170823.tif",
-        "./naip/m_4109326_ne_15_1_20170701.tif",
-        "./naip/m_4209638_nw_14_1_20170716.tif",
-        "./naip/m_4209141_sw_15_1_20170908.tif",
-        "./naip/m_4209256_nw_15_1_20170908.tif",
-    ]
-
-    Xs = []
-
-    for naip_path in naip_paths:
-
-        print(f"Reading {naip_path}")
-        with rasterio.open(naip_path) as naip:
-
-            # Note: band order is (x, y, band) after call to np.swapaxes
-            X = np.swapaxes(naip.read(), 0, 2)
-
-            Xs.append(X)
-
-    return Xs
+    naip_paths = glob.glob("./naip/*tif")
+    return [read_naip_values(naip_path) for naip_path in naip_paths]
 
 
 def main():

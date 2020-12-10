@@ -2,6 +2,11 @@
 
 A GAN for aerial imagery
 
+The inputs to the model are
+[National Agriculture Imagery Program](https://www.fsa.usda.gov/programs-and-services/aerial-photography/imagery-programs/naip-imagery/)
+(NAIP) scenes. These are four band (R G B NIR) aerial imagery rasters downloaded from [USGS Earth Explorer](https://earthexplorer.usgs.gov/)
+and placed in the `./naip` directory.
+
 ```bash
 sudo docker build ~/aerial_imagery_gan --tag=aerial_imagery_gan
 sudo docker run --gpus all -it -v ~/aerial_imagery_gan:/home/aerial_imagery_gan aerial_imagery_gan bash

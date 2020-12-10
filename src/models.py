@@ -7,8 +7,8 @@ from tensorflow.keras.layers import (
     Dense,
     Dropout,
     Flatten,
-    GlobalAveragePooling2D,
     Input,
+    LeakyReLU,
     MaxPooling2D,
     Reshape,
     UpSampling2D,
@@ -23,11 +23,30 @@ from constants import (
 )
 
 
-def add_downsampling_block(input_layer, block_index):
+def add_discriminator_downsampling_block(input_layer, block_index):
 
     n_filters = BASE_N_FILTERS + ADDITIONAL_FILTERS_PER_BLOCK * block_index
 
-    # TODO Try leaky relu?
+    conv1 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(
+        input_layer
+    )
+    dropout = Dropout(rate=DROPOUT_RATE)(conv1)
+    conv2 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(dropout)
+
+    batchnorm = BatchNormalization()(conv2)
+
+    if block_index == N_BLOCKS - 1:
+
+        return batchnorm
+
+    # Note: strided conv instead of maxpool
+    return Conv2D(n_filters, kernel_size=2, strides=2)(batchnorm)
+
+
+def add_generator_downsampling_block(input_layer, block_index):
+
+    n_filters = BASE_N_FILTERS + ADDITIONAL_FILTERS_PER_BLOCK * block_index
+
     conv1 = Conv2D(n_filters, kernel_size=3, padding="same", activation="relu")(
         input_layer
     )
@@ -41,6 +60,7 @@ def add_downsampling_block(input_layer, block_index):
 
         return batchnorm, conv2
 
+    # TODO Try strided conv instead of maxpool
     return MaxPooling2D()(batchnorm), conv2
 
 
@@ -68,11 +88,10 @@ def get_discriminator_model(patch_shape):
 
     for index in range(N_BLOCKS):
 
-        current_last_layer, _ = add_downsampling_block(current_last_layer, index)
+        current_last_layer = add_discriminator_downsampling_block(current_last_layer, index)
 
-    # TODO Try leaky relu for discriminator
     flat = Flatten()(current_last_layer)
-    fc = Dense(16, activation="relu")(flat)
+    fc = Dense(16, activation=LeakyReLU())(flat)
 
     probabilities = Dense(1, activation="sigmoid")(fc)
 
@@ -97,7 +116,7 @@ def get_generator_model(patch_shape):
     for index in range(N_BLOCKS):
 
         # TODO Strided conv instead of maxpool?
-        current_last_layer, conv2_layer = add_downsampling_block(
+        current_last_layer, conv2_layer = add_generator_downsampling_block(
             current_last_layer, index
         )
 
