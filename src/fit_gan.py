@@ -104,6 +104,8 @@ def train(naip_patch_generator, epochs=300):
 
             image_batch = next(naip_patch_generator)
 
+            # TODO Keep history of some recent iterations of the generator, replay
+
             train_step(
                 image_batch,
                 discriminator,

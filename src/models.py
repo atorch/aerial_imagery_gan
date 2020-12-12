@@ -47,11 +47,11 @@ def add_generator_downsampling_block(input_layer, block_index):
 
     n_filters = BASE_N_FILTERS + ADDITIONAL_FILTERS_PER_BLOCK * block_index
 
-    conv1 = Conv2D(n_filters, kernel_size=3, padding="same", activation="relu")(
+    conv1 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(
         input_layer
     )
     dropout = Dropout(rate=DROPOUT_RATE)(conv1)
-    conv2 = Conv2D(n_filters, kernel_size=3, padding="same", activation="relu")(dropout)
+    conv2 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(dropout)
 
     batchnorm = BatchNormalization()(conv2)
 
@@ -72,9 +72,9 @@ def add_upsampling_block(input_layer, block_index, downsampling_conv2_layers):
 
     concat = concatenate([upsample, downsampling_conv2_layers[block_index - 1]])
 
-    conv1 = Conv2D(n_filters, kernel_size=3, padding="same", activation="relu")(concat)
+    conv1 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(concat)
     dropout = Dropout(rate=DROPOUT_RATE)(conv1)
-    conv2 = Conv2D(n_filters, kernel_size=3, padding="same", activation="relu")(dropout)
+    conv2 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(dropout)
 
     return BatchNormalization()(conv2)
 
