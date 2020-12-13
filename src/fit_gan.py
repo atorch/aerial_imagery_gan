@@ -32,21 +32,35 @@ def discriminator_loss(real_output, fake_output):
     return real_loss + fake_loss
 
 
-def generator_loss(fake_output):
+def generator_loss(fake_output, generated_images, naip_mean, naip_std):
 
-    # TODO Try feature matching loss
+    # "Fake" refers to the discriminator's output on the generator's images
 
+    mse = tf.keras.losses.MeanSquaredError()
     cross_entropy = tf.keras.losses.BinaryCrossentropy()
-    return cross_entropy(tf.ones_like(fake_output), fake_output)
+
+    generated_mean = tf.math.reduce_mean(generated_images, axis=(0, 1, 2), keepdims=False)
+    generated_std = tf.math.reduce_std(generated_images, axis=(0, 1, 2), keepdims=False)
+
+    # TODO Look up GAN losses, does anyone do something like this?
+    # TODO Also use naip_std in loss?
+
+    # We want to force the generator to return images means and variances
+    # close to the true NAIP means and variances
+    # TODO Does this need to be scaled?
+    # TODO Comparing means and std devs may not make sense on small batches of generated images
+    moment_loss = mse(generated_mean, naip_mean) + mse(generated_std, naip_std)
+    return moment_loss + cross_entropy(tf.ones_like(fake_output), fake_output)
 
 
 @tf.function
 def train_step(
-    image_batch, discriminator, generator, discriminator_optimizer, generator_optimizer
+    image_batch, discriminator, generator, discriminator_optimizer, generator_optimizer, naip_mean, naip_std,
 ):
 
     # TODO Try GP noise with spatial correlation
     # TODO Do results change with a single band of noise (instead of 4 bands of noise)?
+    # TODO What about mixture of normals with different means?
     noise = tf.random.normal(image_batch.shape)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
@@ -56,8 +70,10 @@ def train_step(
         real_output = discriminator(image_batch, training=True)
         fake_output = discriminator(generated_images, training=True)
 
-        gen_loss = generator_loss(fake_output)
+        gen_loss = generator_loss(fake_output, generated_images, naip_mean, naip_std)
         disc_loss = discriminator_loss(real_output, fake_output)
+
+        # TODO Print losses
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(
@@ -81,7 +97,7 @@ def save_real_images(image_batch):
         plt.imsave(filename, real_image_rgb)
 
 
-def train(naip_patch_generator, epochs=300):
+def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
 
     discriminator = get_discriminator_model(PATCH_SHAPE)
     generator = get_generator_model(PATCH_SHAPE)
@@ -94,7 +110,7 @@ def train(naip_patch_generator, epochs=300):
     )
 
     # Generate images using the same noise (fixed input) at the end of each epoch
-    noise_shape = (2,) + PATCH_SHAPE
+    noise_shape = (32,) + PATCH_SHAPE
     fixed_noise = np.random.normal(size=noise_shape)
 
     for epoch in range(epochs):
@@ -112,6 +128,8 @@ def train(naip_patch_generator, epochs=300):
                 generator,
                 discriminator_optimizer,
                 generator_optimizer,
+                naip_mean,
+                naip_std,
             )
 
         print("Time for epoch {} is {} sec".format(epoch, time.time() - start))
@@ -122,10 +140,20 @@ def train(naip_patch_generator, epochs=300):
             save_real_images(image_batch)
 
         # Generate an image with the generator (same noise every time)
-        fake_image = generator(fixed_noise)
-        prediction = discriminator(fake_image)
-        for image_index in range(noise_shape[0]):
-            fake_image_rgb = fake_image[image_index, :, :, :3].numpy().astype(int)
+        fake_images = generator(fixed_noise)
+
+        fake_image_mean = np.mean(fake_images, axis=(0, 1, 2))
+        print(f"difference in means (naip means minus generator means): {naip_mean - fake_image_mean}")
+        print(f" generator means: {fake_image_mean}")
+
+        # TODO Std dev within patches versus between patches
+        fake_image_std = np.sqrt(np.var(fake_images, axis=(0, 1, 2)))
+        print(f"difference in std_devs (naip std_devs minus generator std_devs): {naip_std - fake_image_std}")
+        print(f" generator std devs: {fake_image_std}")
+
+        prediction = discriminator(fake_images)
+        for image_index in range(min(noise_shape[0], 3)):
+            fake_image_rgb = fake_images[image_index, :, :, :3].numpy().astype(int)
             filename = (
                 f"./examples/generated_image_noise_{image_index}_epoch_{epoch}.png"
             )
@@ -141,6 +169,23 @@ def train(naip_patch_generator, epochs=300):
         print(
             f"discriminator's prediction on real images ({description}):\n{prediction_on_real_images}"
         )
+
+
+def get_naip_mean_and_std(naip_scenes):
+
+    # Compute means and std deviations per band (R G B NIR)
+    naip_sizes = [naip_scene.size for naip_scene in naip_scenes]
+    naip_means = [naip_scene.mean(axis=(0, 1)) for naip_scene in naip_scenes]
+    naip_vars = [naip_scene.var(axis=(0, 1)) for naip_scene in naip_scenes]
+
+    # Note: this produces the same result as
+    #  np.hstack((X.flatten() for X, Y in naip_scenes)).mean()
+    # but uses less memory
+    naip_mean = np.average(naip_means, weights=naip_sizes, axis=0)
+    naip_var = np.average(naip_vars, weights=naip_sizes, axis=0)
+    naip_std = np.sqrt(naip_var)
+
+    return naip_mean.astype(np.float32), naip_std.astype(np.float32)
 
 
 def read_naip_values(naip_path):
@@ -164,6 +209,8 @@ def main():
 
     naip_scenes = get_naip_scenes()
 
+    naip_mean, naip_std = get_naip_mean_and_std(naip_scenes)
+
     naip_patch_generator = get_naip_patch_generator(
         naip_scenes, PATCH_SHAPE, batch_size=BATCH_SIZE
     )
@@ -171,7 +218,9 @@ def main():
     # Array of shape (BATCH_SIZE, 256, 256, 4)
     sample_batch = next(naip_patch_generator)
 
-    train(naip_patch_generator)
+    train(naip_patch_generator, naip_mean, naip_std)
+
+    # TODO Print mean and std of generated output (on each iteration?)
 
 
 if __name__ == "__main__":
