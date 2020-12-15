@@ -9,6 +9,7 @@ from constants import (
     BATCH_SIZE,
     LEARNING_RATE_DISCRIMINATOR,
     LEARNING_RATE_GENERATOR,
+    NOISE_SHAPE,
     PATCH_SHAPE,
     STEPS_PER_EPOCH,
     LABEL_SMOOTHING_ALPHA,
@@ -39,18 +40,12 @@ def generator_loss(fake_output, generated_images, naip_mean, naip_std):
     mse = tf.keras.losses.MeanSquaredError()
     cross_entropy = tf.keras.losses.BinaryCrossentropy()
 
-    generated_mean = tf.math.reduce_mean(generated_images, axis=(0, 1, 2), keepdims=False)
-    generated_std = tf.math.reduce_std(generated_images, axis=(0, 1, 2), keepdims=False)
+    # generated_mean = tf.math.reduce_mean(generated_images, axis=(0, 1, 2), keepdims=False)
+    # generated_std = tf.math.reduce_std(generated_images, axis=(0, 1, 2), keepdims=False)
 
-    # TODO Look up GAN losses, does anyone do something like this?
-    # TODO Also use naip_std in loss?
+    # TODO Feature matching loss: run discriminator's first conv layer on output, match means
 
-    # We want to force the generator to return images means and variances
-    # close to the true NAIP means and variances
-    # TODO Does this need to be scaled?
-    # TODO Comparing means and std devs may not make sense on small batches of generated images
-    moment_loss = mse(generated_mean, naip_mean) + mse(generated_std, naip_std)
-    return moment_loss + cross_entropy(tf.ones_like(fake_output), fake_output)
+    return cross_entropy(tf.ones_like(fake_output), fake_output)
 
 
 @tf.function
@@ -59,9 +54,10 @@ def train_step(
 ):
 
     # TODO Try GP noise with spatial correlation
-    # TODO Do results change with a single band of noise (instead of 4 bands of noise)?
     # TODO What about mixture of normals with different means?
-    noise = tf.random.normal(image_batch.shape)
+    batch_size = image_batch.shape[0]
+    noise_shape = (batch_size, ) + NOISE_SHAPE
+    noise = tf.random.normal(noise_shape)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
 
@@ -73,7 +69,7 @@ def train_step(
         gen_loss = generator_loss(fake_output, generated_images, naip_mean, naip_std)
         disc_loss = discriminator_loss(real_output, fake_output)
 
-        # TODO Print losses
+        # TODO Track losses over time, make a graph at the end
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(
@@ -110,7 +106,7 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
     )
 
     # Generate images using the same noise (fixed input) at the end of each epoch
-    noise_shape = (32,) + PATCH_SHAPE
+    noise_shape = (32,) + NOISE_SHAPE
     fixed_noise = np.random.normal(size=noise_shape)
 
     for epoch in range(epochs):
