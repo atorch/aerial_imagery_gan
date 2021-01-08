@@ -3,9 +3,11 @@ import numpy as np
 
 def get_naip_patch_generator(naip_scenes, patch_shape, batch_size):
 
+    n_bands = patch_shape[2]
+    
     while True:
 
-        batch_X = np.empty((batch_size,) + patch_shape)
+        batch_X = np.empty((batch_size,) + patch_shape, dtype=np.float32)
 
         scene_indices = np.random.choice(range(len(naip_scenes)), size=batch_size)
 
@@ -22,6 +24,6 @@ def get_naip_patch_generator(naip_scenes, patch_shape, batch_size):
 
             naip_patch = naip_X[dim0_start:dim0_end, dim1_start:dim1_end]
 
-            batch_X[batch_index] = naip_patch
+            batch_X[batch_index] = naip_patch[:, :, 0:n_bands]
 
         yield batch_X

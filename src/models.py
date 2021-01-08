@@ -4,6 +4,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
     BatchNormalization,
     Conv2D,
+    Conv2DTranspose,
     Dense,
     Dropout,
     Flatten,
@@ -31,13 +32,12 @@ def add_discriminator_downsampling_block(input_layer, block_index):
 
     n_filters = BASE_N_FILTERS_DISCRIMINATOR + ADDITIONAL_FILTERS_PER_BLOCK_DISCRIMINATOR * block_index
 
-    conv1 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(
+    # TODO Put discriminator kernal size in constants
+    conv = Conv2D(n_filters, kernel_size=4, padding="same", activation=LeakyReLU())(
         input_layer
     )
-    dropout = Dropout(rate=DROPOUT_RATE)(conv1)
-    conv2 = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(dropout)
 
-    batchnorm = BatchNormalization()(conv2)
+    batchnorm = BatchNormalization()(conv)
 
     # Note: strided conv (instead of maxpool) to downsample
     return Conv2D(n_filters, kernel_size=2, strides=2)(batchnorm)
@@ -45,11 +45,14 @@ def add_discriminator_downsampling_block(input_layer, block_index):
 
 def add_generator_block(input_layer, block_index):
 
-    n_filters = BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index
+    n_filters = BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index    
 
     conv = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(
         input_layer
     )
+
+    # TODO Upsample
+    # conv_transpose = Conv2DTranspose(n_filters, kernel_size=2, strides=2, padding="same")(conv)
 
     return BatchNormalization()(conv)
 
@@ -65,9 +68,11 @@ def get_discriminator_model(patch_shape):
 
         current_last_layer = add_discriminator_downsampling_block(current_last_layer, index)
 
-    flat = Flatten()(current_last_layer)
+    dropout = Dropout(rate=DROPOUT_RATE)(current_last_layer)
+    flat = Flatten()(dropout)
+    dense = Dense(512, activation=LeakyReLU())(flat)
 
-    probabilities = Dense(1, activation="sigmoid")(flat)
+    probabilities = Dense(1, activation="sigmoid")(dense)
 
     model = Model(inputs=input_layer, outputs=[probabilities])
 
@@ -90,6 +95,8 @@ def get_generator_model(patch_shape):
         current_last_layer = add_generator_block(
             current_last_layer, index
         )
+
+    # TODO Go back to Unet-ish architecture with concats?
 
     # Note: NAIP pixel values are in [0, 255],
     # so we force the generator to output values in the same range

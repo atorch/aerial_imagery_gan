@@ -10,6 +10,7 @@ from constants import (
     LEARNING_RATE_DISCRIMINATOR,
     LEARNING_RATE_GENERATOR,
     NOISE_SHAPE,
+    NOISE_STD_DEV,
     PATCH_SHAPE,
     STEPS_PER_EPOCH,
     LABEL_SMOOTHING_ALPHA,
@@ -57,14 +58,18 @@ def train_step(
     # TODO What about mixture of normals with different means?
     batch_size = image_batch.shape[0]
     noise_shape = (batch_size, ) + NOISE_SHAPE
-    noise = tf.random.normal(noise_shape)
+    input_noise = tf.random.normal(noise_shape)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
 
-        generated_images = generator(noise, training=True)
+        generated_images = generator(input_noise, training=True)
 
-        real_output = discriminator(image_batch, training=True)
-        fake_output = discriminator(generated_images, training=True)
+        # TODO Try adding instance noise to image_batch and generated_images before running discriminator
+        # TODO Decrease instance noise std dev over time?  Look at papers
+        instance_noise = tf.random.normal(image_batch.shape, stddev=NOISE_STD_DEV)
+
+        real_output = discriminator(image_batch + instance_noise, training=True)
+        fake_output = discriminator(generated_images + instance_noise, training=True)
 
         gen_loss = generator_loss(fake_output, generated_images, naip_mean, naip_std)
         disc_loss = discriminator_loss(real_output, fake_output)
@@ -82,6 +87,8 @@ def train_step(
     discriminator_optimizer.apply_gradients(
         zip(gradients_of_discriminator, discriminator.trainable_variables)
     )
+
+    return gen_loss, disc_loss
 
 
 def save_real_images(image_batch):
@@ -109,7 +116,12 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
     noise_shape = (32,) + NOISE_SHAPE
     fixed_noise = np.random.normal(size=noise_shape)
 
+    gen_losses, disc_losses = [], []
+
     for epoch in range(epochs):
+
+        gen_losses_current_epoch = []
+        disc_losses_current_epoch = []
 
         start = time.time()
         for _ in range(STEPS_PER_EPOCH):
@@ -117,8 +129,7 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
             image_batch = next(naip_patch_generator)
 
             # TODO Keep history of some recent iterations of the generator, replay
-
-            train_step(
+            gen_loss, disc_loss = train_step(
                 image_batch,
                 discriminator,
                 generator,
@@ -127,6 +138,13 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
                 naip_mean,
                 naip_std,
             )
+
+            # TODO Append means or sums for each epoch instead of each step
+            gen_losses_current_epoch.append(gen_loss.numpy())
+            disc_losses_current_epoch.append(disc_loss.numpy())
+
+        gen_losses.append(np.mean(gen_losses_current_epoch))
+        disc_losses.append(np.mean(disc_losses_current_epoch))
 
         print("Time for epoch {} is {} sec".format(epoch, time.time() - start))
 
@@ -138,15 +156,16 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
         # Generate an image with the generator (same noise every time)
         fake_images = generator(fixed_noise)
 
-        fake_image_mean = np.mean(fake_images, axis=(0, 1, 2))
-        print(f"difference in means (naip means minus generator means): {naip_mean - fake_image_mean}")
-        print(f" generator means: {fake_image_mean}")
+        # fake_image_mean = np.mean(fake_images, axis=(0, 1, 2))
+        # print(f"difference in means (naip means minus generator means): {naip_mean - fake_image_mean}")
+        # print(f" generator means: {fake_image_mean}")
 
         # TODO Std dev within patches versus between patches
-        fake_image_std = np.sqrt(np.var(fake_images, axis=(0, 1, 2)))
-        print(f"difference in std_devs (naip std_devs minus generator std_devs): {naip_std - fake_image_std}")
-        print(f" generator std devs: {fake_image_std}")
+        # fake_image_std = np.sqrt(np.var(fake_images, axis=(0, 1, 2)))
+        # print(f"difference in std_devs (naip std_devs minus generator std_devs): {naip_std - fake_image_std}")
+        # print(f" generator std devs: {fake_image_std}")
 
+        # TODO Put this in a function
         prediction = discriminator(fake_images)
         for image_index in range(min(noise_shape[0], 3)):
             fake_image_rgb = fake_images[image_index, :, :, :3].numpy().astype(int)
@@ -159,12 +178,16 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
                 f"discriminator's prediction for {filename}: {prediction.numpy()[image_index]}"
             )
 
+        # TODO Put this in a function
         prediction_on_real_images = discriminator(image_batch)
 
         description = f"discriminator wants to push these towards {LABEL_SMOOTHING_ALPHA}"
         print(
             f"discriminator's prediction on real images ({description}):\n{prediction_on_real_images}"
         )
+
+    print(f"generator losses {gen_losses}")
+    print(f"discriminator losses {disc_losses}")
 
 
 def get_naip_mean_and_std(naip_scenes):
@@ -203,6 +226,8 @@ def get_naip_scenes():
 
 def main():
 
+    tf.keras.backend.set_floatx("float32")
+
     naip_scenes = get_naip_scenes()
 
     naip_mean, naip_std = get_naip_mean_and_std(naip_scenes)
@@ -217,6 +242,10 @@ def main():
     train(naip_patch_generator, naip_mean, naip_std)
 
     # TODO Print mean and std of generated output (on each iteration?)
+
+    # TODO Plots of gradient norms over time
+    # TODO Plots of losses over time
+    # TODO Plots of discriminator accuracies over time
 
 
 if __name__ == "__main__":
