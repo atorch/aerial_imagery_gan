@@ -37,24 +37,39 @@ def add_discriminator_downsampling_block(input_layer, block_index):
         input_layer
     )
 
-    batchnorm = BatchNormalization()(conv)
-
     # Note: strided conv (instead of maxpool) to downsample
-    return Conv2D(n_filters, kernel_size=2, strides=2)(batchnorm)
+    return Conv2D(n_filters, kernel_size=2, strides=2)(conv)
 
 
-def add_generator_block(input_layer, block_index):
+def add_generator_downsampling_block(input_layer, block_index):
 
-    n_filters = BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index    
+    n_filters = BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index
 
-    conv = Conv2D(n_filters, kernel_size=3, padding="same", activation=LeakyReLU())(
+    # TODO Put generator kernel size in constants
+    conv = Conv2D(n_filters, kernel_size=5, padding="same", activation=LeakyReLU())(
         input_layer
     )
 
-    # TODO Upsample
-    # conv_transpose = Conv2DTranspose(n_filters, kernel_size=2, strides=2, padding="same")(conv)
+    batch_norm = BatchNormalization()(conv)
 
-    return BatchNormalization()(conv)
+    # Note: strided conv (instead of maxpool) to downsample
+    # TODO Larger kernel size here?
+    return Conv2D(n_filters, kernel_size=2, strides=2)(batch_norm)
+
+
+def add_generator_upsampling_block(input_layer, block_index, downsampling_layers):
+
+    n_filters = BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index
+
+    conv_transpose = Conv2DTranspose(n_filters, kernel_size=2, strides=2, padding="same")(input_layer)
+
+    conv = Conv2D(n_filters, kernel_size=5, padding="same", activation=LeakyReLU())(
+        conv_transpose
+    )
+
+    # Note: this assumes that we initialize
+    # downsampling_layers = [input_layer] in the generator code
+    return concatenate([conv, downsampling_layers[block_index]])
 
 
 def get_discriminator_model(patch_shape):
@@ -90,19 +105,32 @@ def get_generator_model(patch_shape):
 
     current_last_layer = input_layer
 
+    # Note: including the input layer lets us concat
+    # with the input noise shortly before the output layer
+    downsampling_layers = [input_layer]
+
     for index in range(N_BLOCKS_GENERATOR):
 
-        current_last_layer = add_generator_block(
+        current_last_layer = add_generator_downsampling_block(
             current_last_layer, index
         )
 
-    # TODO Go back to Unet-ish architecture with concats?
+        downsampling_layers.append(current_last_layer)
+
+    for index in range(N_BLOCKS_GENERATOR - 1, -1, -1):
+
+        current_last_layer = add_generator_upsampling_block(
+            current_last_layer, index, downsampling_layers
+        )
+
+    final_conv = Conv2D(BASE_N_FILTERS_GENERATOR, kernel_size=5, padding="same", activation=LeakyReLU())(
+        current_last_layer
+    )
 
     # Note: NAIP pixel values are in [0, 255],
-    # so we force the generator to output values in the same range
-    # TODO Rescale pixel values to [-1, 1] instead?
+    # but we map them to [-1, 1] and then use a tanh activation
     n_bands = patch_shape[2]
-    pixel_values = 255 * Conv2D(n_bands, 1, activation="sigmoid")(current_last_layer)
+    pixel_values = Conv2D(n_bands, kernel_size=3, padding="same", activation="tanh")(final_conv)
 
     model = Model(inputs=input_layer, outputs=[pixel_values])
 

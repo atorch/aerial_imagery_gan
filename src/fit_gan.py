@@ -10,12 +10,12 @@ from constants import (
     LEARNING_RATE_DISCRIMINATOR,
     LEARNING_RATE_GENERATOR,
     NOISE_SHAPE,
-    NOISE_STD_DEV,
+    DISCRIMINATOR_INPUT_NOISE_STD_DEV,
     PATCH_SHAPE,
     STEPS_PER_EPOCH,
     LABEL_SMOOTHING_ALPHA,
 )
-from generator import get_naip_patch_generator
+from generator import get_naip_patch_generator, inverse_transform
 from models import get_discriminator_model, get_generator_model
 
 
@@ -64,12 +64,11 @@ def train_step(
 
         generated_images = generator(input_noise, training=True)
 
-        # TODO Try adding instance noise to image_batch and generated_images before running discriminator
-        # TODO Decrease instance noise std dev over time?  Look at papers
-        instance_noise = tf.random.normal(image_batch.shape, stddev=NOISE_STD_DEV)
+        # TODO Decrease noise std dev as the number of iterations increases?
+        discriminator_input_noise = tf.random.normal(image_batch.shape, stddev=DISCRIMINATOR_INPUT_NOISE_STD_DEV)
 
-        real_output = discriminator(image_batch + instance_noise, training=True)
-        fake_output = discriminator(generated_images + instance_noise, training=True)
+        real_output = discriminator(image_batch + discriminator_input_noise, training=True)
+        fake_output = discriminator(generated_images + discriminator_input_noise, training=True)
 
         gen_loss = generator_loss(fake_output, generated_images, naip_mean, naip_std)
         disc_loss = discriminator_loss(real_output, fake_output)
@@ -96,7 +95,7 @@ def save_real_images(image_batch):
     for image_index in range(image_batch.shape[0]):
         filename = f"./examples/real_image_{image_index}.png"
 
-        real_image_rgb = image_batch[image_index, :, :, :3].astype(int)
+        real_image_rgb = inverse_transform(image_batch[image_index, :, :, :3]).astype(int)
         plt.imsave(filename, real_image_rgb)
 
 
@@ -139,7 +138,6 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
                 naip_std,
             )
 
-            # TODO Append means or sums for each epoch instead of each step
             gen_losses_current_epoch.append(gen_loss.numpy())
             disc_losses_current_epoch.append(disc_loss.numpy())
 
@@ -168,7 +166,7 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
         # TODO Put this in a function
         prediction = discriminator(fake_images)
         for image_index in range(min(noise_shape[0], 3)):
-            fake_image_rgb = fake_images[image_index, :, :, :3].numpy().astype(int)
+            fake_image_rgb = inverse_transform(fake_images[image_index, :, :, :3].numpy()).astype(int)
             filename = (
                 f"./examples/generated_image_noise_{image_index}_epoch_{epoch}.png"
             )
@@ -188,6 +186,8 @@ def train(naip_patch_generator, naip_mean, naip_std, epochs=300):
 
     print(f"generator losses {gen_losses}")
     print(f"discriminator losses {disc_losses}")
+    # TODO Also plot norm of gradients?
+    # TODO Plot
 
 
 def get_naip_mean_and_std(naip_scenes):
@@ -226,6 +226,7 @@ def get_naip_scenes():
 
 def main():
 
+    # TODO float16 to save memory?
     tf.keras.backend.set_floatx("float32")
 
     naip_scenes = get_naip_scenes()
