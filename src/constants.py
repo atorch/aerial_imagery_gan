@@ -12,7 +12,7 @@ BASE_N_FILTERS_GENERATOR = 128
 DROPOUT_RATE = 0.3
 
 N_BLOCKS_DISCRIMINATOR = 4
-N_BLOCKS_GENERATOR = 4
+N_BLOCKS_GENERATOR = 5
 
 # Note: NAIP scenes have 4 bands (R B G NIR),
 # but we want to generate images with only 3 (R G B) bands
