@@ -30,7 +30,10 @@ from constants import (
 
 def add_discriminator_downsampling_block(input_layer, block_index):
 
-    n_filters = BASE_N_FILTERS_DISCRIMINATOR + ADDITIONAL_FILTERS_PER_BLOCK_DISCRIMINATOR * block_index
+    n_filters = (
+        BASE_N_FILTERS_DISCRIMINATOR
+        + ADDITIONAL_FILTERS_PER_BLOCK_DISCRIMINATOR * block_index
+    )
 
     # TODO Put discriminator kernal size in constants
     conv = Conv2D(n_filters, kernel_size=4, padding="same", activation=LeakyReLU())(
@@ -43,7 +46,9 @@ def add_discriminator_downsampling_block(input_layer, block_index):
 
 def add_generator_downsampling_block(input_layer, block_index):
 
-    n_filters = BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index
+    n_filters = (
+        BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index
+    )
 
     # TODO Put generator kernel size in constants
     conv = Conv2D(n_filters, kernel_size=5, padding="same", activation=LeakyReLU())(
@@ -59,13 +64,19 @@ def add_generator_downsampling_block(input_layer, block_index):
 
 def add_generator_upsampling_block(input_layer, block_index, downsampling_layers):
 
-    n_filters = BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index
+    n_filters = (
+        BASE_N_FILTERS_GENERATOR + ADDITIONAL_FILTERS_PER_BLOCK_GENERATOR * block_index
+    )
 
-    conv_transpose = Conv2DTranspose(n_filters, kernel_size=2, strides=2, padding="same")(input_layer)
+    conv_transpose = Conv2DTranspose(
+        n_filters, kernel_size=2, strides=2, padding="same"
+    )(input_layer)
 
     conv = Conv2D(n_filters, kernel_size=5, padding="same", activation=LeakyReLU())(
         conv_transpose
     )
+
+    # TODO Does it help to have BatchNormalization here too?
 
     # Note: this assumes that we initialize
     # downsampling_layers = [input_layer] in the generator code
@@ -81,7 +92,9 @@ def get_discriminator_model(patch_shape):
 
     for index in range(N_BLOCKS_DISCRIMINATOR):
 
-        current_last_layer = add_discriminator_downsampling_block(current_last_layer, index)
+        current_last_layer = add_discriminator_downsampling_block(
+            current_last_layer, index
+        )
 
     dropout = Dropout(rate=DROPOUT_RATE)(current_last_layer)
     flat = Flatten()(dropout)
@@ -111,9 +124,7 @@ def get_generator_model(patch_shape):
 
     for index in range(N_BLOCKS_GENERATOR):
 
-        current_last_layer = add_generator_downsampling_block(
-            current_last_layer, index
-        )
+        current_last_layer = add_generator_downsampling_block(current_last_layer, index)
 
         downsampling_layers.append(current_last_layer)
 
@@ -123,14 +134,18 @@ def get_generator_model(patch_shape):
             current_last_layer, index, downsampling_layers
         )
 
-    final_conv = Conv2D(BASE_N_FILTERS_GENERATOR, kernel_size=5, padding="same", activation=LeakyReLU())(
-        current_last_layer
-    )
+    # TODO BatchNorm before the final convs?
+    # TODO Add another conv layer with a different kernel size?
+    final_conv = Conv2D(
+        BASE_N_FILTERS_GENERATOR, kernel_size=5, padding="same", activation=LeakyReLU()
+    )(current_last_layer)
 
     # Note: NAIP pixel values are in [0, 255],
     # but we map them to [-1, 1] and then use a tanh activation
     n_bands = patch_shape[2]
-    pixel_values = Conv2D(n_bands, kernel_size=3, padding="same", activation="tanh")(final_conv)
+    pixel_values = Conv2D(n_bands, kernel_size=3, padding="same", activation="tanh")(
+        final_conv
+    )
 
     model = Model(inputs=input_layer, outputs=[pixel_values])
 

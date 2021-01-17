@@ -14,7 +14,7 @@ def inverse_transform(z):
 def get_naip_patch_generator(naip_scenes, patch_shape, batch_size):
 
     n_bands = patch_shape[2]
-    
+
     while True:
 
         batch_X = np.empty((batch_size,) + patch_shape, dtype=np.float32)

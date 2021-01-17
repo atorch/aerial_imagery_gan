@@ -19,16 +19,15 @@ from generator import get_naip_patch_generator, inverse_transform
 from models import get_discriminator_model, get_generator_model
 
 
-## Based on https://www.tensorflow.org/tutorials/generative/dcgan
-
-
 def discriminator_loss(real_output, fake_output):
 
     # "Real" refers to the discriminator's output on real images
     # "Fake" refers to the discriminator's output on the generator's images
 
     cross_entropy = tf.keras.losses.BinaryCrossentropy()
-    real_loss = cross_entropy(LABEL_SMOOTHING_ALPHA * tf.ones_like(real_output), real_output)
+    real_loss = cross_entropy(
+        LABEL_SMOOTHING_ALPHA * tf.ones_like(real_output), real_output
+    )
     fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
 
     return real_loss + fake_loss
@@ -49,10 +48,8 @@ def train_step(
     image_batch, discriminator, generator, discriminator_optimizer, generator_optimizer
 ):
 
-    # TODO Try GP noise with spatial correlation
-    # TODO What about mixture of normals with different means?
     batch_size = image_batch.shape[0]
-    noise_shape = (batch_size, ) + NOISE_SHAPE
+    noise_shape = (batch_size,) + NOISE_SHAPE
     input_noise = tf.random.normal(noise_shape)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
@@ -60,15 +57,19 @@ def train_step(
         generated_images = generator(input_noise, training=True)
 
         # TODO Decrease noise std dev as the number of iterations increases?
-        discriminator_input_noise = tf.random.normal(image_batch.shape, stddev=DISCRIMINATOR_INPUT_NOISE_STD_DEV)
+        discriminator_input_noise = tf.random.normal(
+            image_batch.shape, stddev=DISCRIMINATOR_INPUT_NOISE_STD_DEV
+        )
 
-        real_output = discriminator(image_batch + discriminator_input_noise, training=True)
-        fake_output = discriminator(generated_images + discriminator_input_noise, training=True)
+        real_output = discriminator(
+            image_batch + discriminator_input_noise, training=True
+        )
+        fake_output = discriminator(
+            generated_images + discriminator_input_noise, training=True
+        )
 
         gen_loss = generator_loss(fake_output, generated_images)
         disc_loss = discriminator_loss(real_output, fake_output)
-
-        # TODO Track losses over time, make a graph at the end
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(
@@ -90,18 +91,21 @@ def save_real_images(image_batch):
     for image_index in range(image_batch.shape[0]):
         filename = f"./naip_patches/naip_patch_{image_index}.png"
 
-        real_image_rgb = inverse_transform(image_batch[image_index, :, :, :3]).astype(int)
+        real_image_rgb = inverse_transform(image_batch[image_index, :, :, :3]).astype(
+            int
+        )
         plt.imsave(filename, real_image_rgb)
 
 
 def save_generator_output(noise, generator, discriminator, epoch):
 
-    # Generate an image with the generator (same noise every time)
     fake_images = generator(noise)
-
     prediction = discriminator(fake_images)
+
     for image_index in range(noise.shape[0]):
-        fake_image_rgb = inverse_transform(fake_images[image_index, :, :, :3].numpy()).astype(int)
+        fake_image_rgb = inverse_transform(
+            fake_images[image_index, :, :, :3].numpy()
+        ).astype(int)
         filename = (
             f"./generator_output/generated_image_noise_{image_index}_epoch_{epoch}.png"
         )
@@ -112,7 +116,7 @@ def save_generator_output(noise, generator, discriminator, epoch):
         )
 
 
-def train(naip_patch_generator, epochs=300):
+def train(naip_patch_generator, epochs=400):
 
     discriminator = get_discriminator_model(PATCH_SHAPE)
     generator = get_generator_model(PATCH_SHAPE)
@@ -162,20 +166,26 @@ def train(naip_patch_generator, epochs=300):
             # Save a few real NAIP image patches for inspection
             save_real_images(image_batch)
 
+        # Generate an image with the generator (same noise every time)
         save_generator_output(fixed_noise, generator, discriminator, epoch)
 
-        # TODO Put this in a function
         prediction_on_real_images = discriminator(image_batch)
 
-        description = f"discriminator wants to push these towards {LABEL_SMOOTHING_ALPHA}"
+        description = (
+            f"discriminator wants to push these towards {LABEL_SMOOTHING_ALPHA}"
+        )
         print(
             f"discriminator's prediction on real images ({description}):\n{prediction_on_real_images}"
         )
 
+        generator.save_weights(f"saved_models/generator_epoch_{epoch}")
+
+    # TODO Plot losses
+    # TODO Also plot norm of gradients?
     print(f"generator losses {gen_losses}")
     print(f"discriminator losses {disc_losses}")
-    # TODO Also plot norm of gradients?
-    # TODO Plot
+
+    return generator, discriminator
 
 
 def get_naip_mean_and_std(naip_scenes):
@@ -228,12 +238,10 @@ def main():
         naip_scenes, PATCH_SHAPE, batch_size=BATCH_SIZE
     )
 
-    # Array of shape (BATCH_SIZE, 256, 256, 4)
-    sample_batch = next(naip_patch_generator)
-
-    train(naip_patch_generator)
-
-    # TODO Print mean and std of generated output (on each iteration?)
+    # TODO Try training sequentially on larger and larger patches,
+    # reusing weights from previous patch size (except the FC part of the discriminator)
+    # For example, start on 64-by-64 pixel patches, then 128, then 256
+    generator, discriminator = train(naip_patch_generator)
 
     # TODO Plots of gradient norms over time
     # TODO Plots of losses over time
