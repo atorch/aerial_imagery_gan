@@ -132,3 +132,5 @@ dmypy.json
 
 naip/*tif
 examples/*png
+generator_output/*png
+saved_models/*
