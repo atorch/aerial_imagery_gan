@@ -27,17 +27,16 @@ Real NAIP image patches look like this:
 
 ![Sample NAIP patch 5](examples/real_image_5.png)
 
-The generated images are not yet convincing.
-The most realistic ones I've seen so far look vaguely like forest or pasture with bushes:
+The generator output (shown here for a fixed epoch, with varying input noise)
+looks like this:
 
-![Generated image](examples/generated_image_noise_1_epoch_44.png)
+![Generator output 0](generator_output/generated_image_noise_0_epoch_384.png)
 
-![Generated image](examples/generated_image_noise_1_epoch_45.png)
+![Generator output 1](generator_output/generated_image_noise_1_epoch_384.png)
 
-Many iterations later, the generator is returning images that look like this:
+![Generator output 2](generator_output/generated_image_noise_2_epoch_384.png)
 
-![Generated image](examples/generated_image_noise_0_epoch_197.png)
+Since the generator is fully convolutional, we can also use it to generate
+images larger than the patches it was trained on, like this:
 
-![Generated image](examples/generated_image_noise_1_epoch_197.png)
-
-TODO Have a look at the tips in https://arxiv.org/abs/1606.03498
+![Generator large output](generator_output/large_image_epoch_384.png)
