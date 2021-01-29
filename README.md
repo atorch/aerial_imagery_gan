@@ -40,3 +40,8 @@ Since the generator is fully convolutional, we can also use it to generate
 images larger than the patches it was trained on, like this:
 
 ![Generator large output](generator_output/large_image_epoch_384.png)
+
+# TODO https://distill.pub/2016/deconv-checkerboard/
+
+Goal: generate "large" (maybe 512-by-512?) images that look realistic
+and contain a mix of forest, pasture, and maybe even roads and buildings.

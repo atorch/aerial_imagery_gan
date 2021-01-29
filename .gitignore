@@ -131,6 +131,7 @@ dmypy.json
 *~
 
 naip/*tif
+naip_patches/*png
 examples/*png
 generator_output/*png
 saved_models/*
