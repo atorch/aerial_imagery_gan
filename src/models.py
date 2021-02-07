@@ -24,7 +24,7 @@ from constants import (
     DROPOUT_RATE,
     N_BLOCKS_DISCRIMINATOR,
     N_BLOCKS_GENERATOR,
-    N_CDL_CLASSES,
+    N_LABEL_CLASSES,
     NOISE_SHAPE,
     PATCH_SHAPE,
 )
@@ -89,7 +89,7 @@ def get_discriminator_model():
 
     # Note: the discriminator is not fully conv (needs a specific input shape)
     # The discriminator sees NAIP pixel values with CDL labels concatenated as an extra band
-    input_shape = (PATCH_SHAPE[0], PATCH_SHAPE[1], PATCH_SHAPE[2] + N_CDL_CLASSES)
+    input_shape = (PATCH_SHAPE[0], PATCH_SHAPE[1], PATCH_SHAPE[2] + N_LABEL_CLASSES)
     input_layer = Input(shape=input_shape)
 
     current_last_layer = input_layer
@@ -120,7 +120,7 @@ def get_generator_model():
     # Note: during training, input has the same width and height
     # as the NAIP image patches, but may have a different number of bands
     # TODO Replace NOISE_SHAPE[:2] with Nones to make generator fully conv
-    input_shape = (NOISE_SHAPE[0], NOISE_SHAPE[1], NOISE_SHAPE[2] + N_CDL_CLASSES)
+    input_shape = (NOISE_SHAPE[0], NOISE_SHAPE[1], NOISE_SHAPE[2] + N_LABEL_CLASSES)
     input_layer = Input(shape=input_shape)
 
     current_last_layer = input_layer

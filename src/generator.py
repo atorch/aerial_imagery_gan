@@ -1,12 +1,12 @@
 import numpy as np
 
-from constants import BATCH_SIZE, N_CDL_CLASSES, PATCH_SHAPE
+from constants import BATCH_SIZE, N_LABEL_CLASSES, PATCH_SHAPE
 
 
 def transform(x):
 
     # TODO Map [0, 255] to [-1, 1]
-    return 2*x/255 - 1
+    return 2 * x / 255 - 1
 
 
 def inverse_transform(z):
@@ -22,7 +22,9 @@ def get_naip_patch_generator(naip_scenes):
         # TODO Would it be cleaner to set up a multi-input generator and discriminator instead?
         # TODO Could give the generator inputs names ("noise" and "CDL"),
         # and the discriminator inputs could have names like "image_pixels" and "CDL"
-        batch_shape = (BATCH_SIZE,) + (PATCH_SHAPE[:2]) + (PATCH_SHAPE[2] + N_CDL_CLASSES, )
+        batch_shape = (
+            (BATCH_SIZE,) + (PATCH_SHAPE[:2]) + (PATCH_SHAPE[2] + N_LABEL_CLASSES,)
+        )
         batch_X = np.empty(batch_shape, dtype=np.float32)
 
         scene_indices = np.random.choice(range(len(naip_scenes)), size=BATCH_SIZE)

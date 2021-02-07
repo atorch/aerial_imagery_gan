@@ -13,7 +13,8 @@ from constants import (
     DISCRIMINATOR_INPUT_NOISE_STD_DEV,
     STEPS_PER_EPOCH,
     LABEL_SMOOTHING_ALPHA,
-    N_CDL_CLASSES,
+    LABEL_CONFIG,
+    N_LABEL_CLASSES,
 )
 from generator import get_naip_patch_generator, inverse_transform, transform
 from models import get_discriminator_model, get_generator_model
@@ -52,9 +53,8 @@ def train_step(
     noise_shape = (batch_size,) + NOISE_SHAPE
     input_noise = tf.random.normal(noise_shape)
 
-    # TODO This needs to be consistent with the number of CDL bands in the image batch
     # TODO Might be much cleaner to have multiple inputs for generator and discriminator...
-    cdl = image_batch[:, :, :, -N_CDL_CLASSES:]
+    cdl = image_batch[:, :, :, -N_LABEL_CLASSES:]
     input_noise_and_cdl = tf.concat([input_noise, cdl], axis=-1)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
@@ -108,7 +108,7 @@ def save_generator_output(generator_input, generator, discriminator, epoch):
     fake_images = generator(generator_input)
 
     # TODO This would be much less messy with multi input models
-    cdl = generator_input[:, :, :, -N_CDL_CLASSES:]
+    cdl = generator_input[:, :, :, -N_LABEL_CLASSES:]
     prediction = discriminator(np.concatenate([fake_images, cdl], axis=-1))
 
     for image_index in range(generator_input.shape[0]):
@@ -146,11 +146,15 @@ def train(naip_patch_generator, epochs=400):
     noise_shape = (3,) + NOISE_SHAPE
     fixed_noise = np.random.normal(size=noise_shape)
 
-    cdl_one_hot = np.zeros((3, NOISE_SHAPE[0], NOISE_SHAPE[1], N_CDL_CLASSES))
-    cdl_one_hot[0, :10, :10, 0] = 1
-    cdl_one_hot[1, :, :, 0] = 1
-    cdl_one_hot[2, :, :, 1] = 1
-    fixed_generator_input = np.concatenate([fixed_noise, cdl_one_hot], axis=-1)
+    label_one_hot = np.zeros((3, NOISE_SHAPE[0], NOISE_SHAPE[1], N_LABEL_CLASSES))
+    label_one_hot[0, :20, :30, 0] = 1
+    label_one_hot[1, :, :, 0] = 1
+    label_one_hot[2, :, :, 3] = 1
+
+    # TODO Road?  Needs to be consistent with label config, can grab dynamically
+    label_one_hot[2, 5:10, :, 6] = 1
+
+    fixed_generator_input = np.concatenate([fixed_noise, label_one_hot], axis=-1)
 
     gen_losses, disc_losses = [], []
 
@@ -247,26 +251,24 @@ def read_labeled_naip_values(naip_path):
     # Careful: the NAIP values are originally unsigned integers!
     naip_X = transform(naip_X.astype(np.float32))
 
-    # Convention: for each .tif file in naip/, there is a corresponding CDL annotation (label)
-    # raster in cdl_annotations/, of the exact same width and height (spatial dimensions)
-    cdl_annotation_path = naip_path.replace("naip/", "cdl_annotations/")
-    cdl_X = read_raster_values(cdl_annotation_path).astype(int)
+    # Convention: for each .tif file in naip/, there is a corresponding
+    # annotation (label) raster in cdl_annotations/, building_annotations/, etc,
+    # of the exact same width and height (spatial dimensions)
 
-    building_annotation_path = naip_path.replace("naip/", "building_annotations/")
-    building_X = read_raster_values(building_annotation_path).astype(np.float32)
+    annotations = {}
+    # TODO Rename this dirs to "labels" instead of "annotations"?
+    # TODO Get these from label config
+    for dirname in ["cdl_annotations/", "road_annotations/", "building_annotations/"]:
+        annotation_path = naip_path.replace("naip/", dirname)
+        annotation_X = read_raster_values(annotation_path).astype(int)
+        annotations[dirname] = annotation_X
 
-    # TODO One hot encode several CDL classes, generalize, use a label encoder
-    cdl_forest_codes = [63, 141, 142, 143]
-    cdl_forest_one_hot = np.isin(cdl_X, cdl_forest_codes)
+    labels_one_hot = []
+    for label_name, dirname, label_codes in LABEL_CONFIG:
+        labels_one_hot.append(np.isin(annotations[dirname], label_codes))
 
-    cdl_developed_codes = [82, 121, 122, 123, 124]
-    cdl_developed_one_hot = np.isin(cdl_X, cdl_developed_codes)
-
-    # Note: class labels (CDL annotations) are added as extra bands
-    # TODO This needs to be consistent with N_CDL_CLASSES, messy
-    return np.concatenate(
-        [naip_X, cdl_forest_one_hot, cdl_developed_one_hot, building_X], axis=-1
-    )
+    # Note: class labels (CDL annotations, roads, etc) are added as extra bands
+    return np.concatenate([naip_X,] + labels_one_hot, axis=-1)
 
 
 def get_labeled_naip_scenes():
