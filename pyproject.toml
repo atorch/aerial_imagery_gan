@@ -1,0 +1,49 @@
+[project]
+name = "aerial-imagery-gan"
+version = "0.2.0"
+description = "Generative models (GAN and diffusion) for 4-band NAIP aerial imagery"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    # 2.7.x is the last PyTorch release with CUDA 11.8 wheels, which is the newest
+    # CUDA that NVIDIA driver 470 can run (via CUDA minor-version compatibility).
+    "torch==2.7.1",
+    "torchvision==0.22.1",
+    "numpy>=1.26",
+    "rasterio>=1.4",
+    "pillow>=10",
+    "matplotlib>=3.8",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+# Kernel Inception Distance, for comparing runs with a number instead of eyeballing.
+metrics = ["torchmetrics[image]>=1.4"]
+
+[project.scripts]
+aerial = "aerial_imagery_gan.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.12"]
+build-backend = "uv_build"
+
+# On Linux, pull torch/torchvision from the CUDA 11.8 index (works on Pascal GPUs
+# with driver >= 450.80). Other platforms (macOS) get the default PyPI wheels.
+# If you upgrade your NVIDIA driver to >= 535, you can switch this to cu126.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu118", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu118", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

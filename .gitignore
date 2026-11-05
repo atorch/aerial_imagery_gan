@@ -135,3 +135,11 @@ naip_patches/*png
 examples/*png
 generator_output/*png
 saved_models/*
+
+# Training runs (samples, checkpoints, loss logs) and sampling output
+runs/
+generated/
+# Label rasters (siblings of naip/, same filenames)
+cdl_annotations/*tif
+road_annotations/*tif
+building_annotations/*tif
