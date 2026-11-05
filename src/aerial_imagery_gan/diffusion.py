@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import copy
 import math
+from itertools import pairwise
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from .common import count_params, ema_update, group_norm, seeded_randn
 from .config import N_BANDS, N_LABEL_CHANNELS, TrainConfig
@@ -61,6 +63,7 @@ class Attention(nn.Module):
     def __init__(self, channels: int, head_dim: int = 64):
         super().__init__()
         self.heads = max(channels // head_dim, 1)
+        self.max_query_chunk = 4096
         self.norm = group_norm(channels)
         self.qkv = nn.Conv2d(channels, 3 * channels, 1)
         self.proj = nn.Conv2d(channels, channels, 1)
@@ -71,7 +74,18 @@ class Attention(nn.Module):
         n, c, h, w = x.shape
         qkv = self.qkv(self.norm(x)).reshape(n, 3, self.heads, c // self.heads, h * w)
         q, k, v = (t.transpose(-1, -2) for t in qkv.unbind(1))  # (n, heads, hw, d)
-        out = F.scaled_dot_product_attention(q, k, v)
+        if q.shape[2] <= self.max_query_chunk:
+            out = F.scaled_dot_product_attention(q, k, v)
+        else:
+            # Large images (sampling beyond the training size): bound the attention
+            # matrix's memory in case no memory-efficient kernel is available
+            out = torch.cat(
+                [
+                    F.scaled_dot_product_attention(q_chunk, k, v)
+                    for q_chunk in q.split(self.max_query_chunk, dim=2)
+                ],
+                dim=2,
+            )
         return x + self.proj(out.transpose(-1, -2).reshape(n, c, h, w))
 
 
@@ -84,9 +98,11 @@ class UNet(nn.Module):
         n_res_blocks: int = 2,
         attention: bool = True,
         dropout: float = 0.0,
+        gradient_checkpointing: bool = False,
     ):
         super().__init__()
         self.label_channels = label_channels
+        self.gradient_checkpointing = gradient_checkpointing
         self.downsample_factor = 2 ** (len(channel_mults) - 1)
         emb_dim = 4 * channels
         self.time_embed = nn.Sequential(
@@ -127,8 +143,11 @@ class UNet(nn.Module):
                 )
                 ch = channels * mult
             if level != 0:
-                self.up.append(nn.Sequential(nn.Upsample(scale_factor=2, mode="nearest"),
-                                             nn.Conv2d(ch, ch, 3, padding=1)))
+                self.up.append(
+                    nn.Sequential(
+                        nn.Upsample(scale_factor=2, mode="nearest"), nn.Conv2d(ch, ch, 3, padding=1)
+                    )
+                )
 
         self.output = nn.Sequential(group_norm(ch), nn.SiLU(), nn.Conv2d(ch, N_BANDS, 3, padding=1))
         nn.init.zeros_(self.output[-1].weight)
@@ -143,13 +162,20 @@ class UNet(nn.Module):
         return block
 
     @staticmethod
-    def _run_block(block, x, emb):
-        if isinstance(block, nn.ModuleList):
-            x = block[0](x, emb)
-            for layer in block[1:]:
-                x = layer(x)
-            return x
-        return block(x)  # downsample / upsample
+    def _apply_block(block, x, emb):
+        x = block[0](x, emb)
+        for layer in block[1:]:
+            x = layer(x)
+        return x
+
+    def _run_block(self, block, x, emb):
+        if not isinstance(block, nn.ModuleList):
+            return block(x)  # downsample / upsample
+        if self.gradient_checkpointing and self.training and torch.is_grad_enabled():
+            # Recompute activations in the backward pass instead of storing them:
+            # roughly halves activation memory for ~30% more compute per step
+            return checkpoint(self._apply_block, block, x, emb, use_reentrant=False)
+        return self._apply_block(block, x, emb)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, labels: torch.Tensor | None):
         if self.label_channels:
@@ -182,7 +208,13 @@ class DiffusionTrainer:
         self.device = device
         mults = tuple(int(m) for m in cfg.unet_channel_mults.split(","))
         label_channels = N_LABEL_CHANNELS if use_labels else 0
-        self.model = UNet(label_channels, cfg.unet_channels, mults, attention=cfg.unet_attention)
+        self.model = UNet(
+            label_channels,
+            cfg.unet_channels,
+            mults,
+            attention=cfg.unet_attention,
+            gradient_checkpointing=cfg.gradient_checkpointing,
+        )
         self.model.to(device)
         self.model_ema = copy.deepcopy(self.model).eval().requires_grad_(False)
         self.opt = torch.optim.AdamW(self.model.parameters(), lr=cfg.lr_diffusion, weight_decay=0)
@@ -244,7 +276,7 @@ class DiffusionTrainer:
 
         x = seeded_randn((n, N_BANDS, height, width), seed, self.device)
         times = torch.linspace(1.0, 0.0, steps + 1, device=self.device)
-        for t, t_next in zip(times[:-1], times[1:]):
+        for t, t_next in pairwise(times):
             x = x + (t_next - t) * self._velocity(model, x, t, labels, guidance_scale)
         model.train(was_training)
         return x.clamp(-1, 1)

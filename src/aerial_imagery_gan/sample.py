@@ -85,12 +85,14 @@ def sample_large(
     """
     torch_device = pick_device(device)
     print(f"Device: {describe_device(torch_device)}")
-    trainer, cfg, use_labels = load_trainer_from_checkpoint(checkpoint, torch_device)
+    trainer, _, use_labels = load_trainer_from_checkpoint(checkpoint, torch_device)
     data = load_scene(Path(scene), use_labels)
     _, height, width = data.image.shape
     size = min(size, height - row, width - col) // 16 * 16
     image = data.image[None, :, row : row + size, col : col + size]
-    label_map = None if data.labels is None else data.labels[None, row : row + size, col : col + size]
+    label_map = (
+        None if data.labels is None else data.labels[None, row : row + size, col : col + size]
+    )
     real, labels = batch_to_tensors(image, label_map, torch_device)
 
     out_dir = Path(out) / f"{Path(scene).stem}_r{row}_c{col}_s{size}"
@@ -149,4 +151,3 @@ def kid(
     mean, std = (float(v) for v in metric.compute())
     print(f"KID: {mean:.5f} ± {std:.5f} (n={n}, checkpoint={checkpoint})")
     return mean, std
-

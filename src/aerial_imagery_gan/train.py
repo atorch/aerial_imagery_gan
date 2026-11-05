@@ -58,6 +58,15 @@ def load_trainer_from_checkpoint(path: str | Path, device: torch.device):
     return trainer, cfg, checkpoint["use_labels"]
 
 
+def append_csv_row(path: Path, row: dict) -> None:
+    new_file = not path.exists() or path.stat().st_size == 0
+    with open(path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(row))
+        if new_file:
+            writer.writeheader()
+        writer.writerow(row)
+
+
 def plot_losses(csv_path: Path, png_path: Path) -> None:
     import matplotlib
 
@@ -148,8 +157,6 @@ def train(cfg: TrainConfig, resume: str | None = None) -> Path:
         }
 
     csv_path = run_dir / "losses.csv"
-    csv_file = open(csv_path, "a", newline="")
-    writer = None
     running: dict[str, list[float]] = {}
     start = time.time()
 
@@ -165,13 +172,7 @@ def train(cfg: TrainConfig, resume: str | None = None) -> Path:
             means = {key: float(np.mean(values)) for key, values in running.items()}
             running = {}
             progress.set_postfix({k: f"{v:.3f}" for k, v in means.items()})
-            if writer is None:
-                fields = ["step", "seconds", *means]
-                writer = csv.DictWriter(csv_file, fieldnames=fields)
-                if csv_file.tell() == 0:
-                    writer.writeheader()
-            writer.writerow({"step": done, "seconds": round(time.time() - start), **means})
-            csv_file.flush()
+            append_csv_row(csv_path, {"step": done, "seconds": round(time.time() - start), **means})
 
         if done % cfg.sample_every == 0 or done == cfg.steps:
             save_samples(
@@ -182,11 +183,12 @@ def train(cfg: TrainConfig, resume: str | None = None) -> Path:
         if done % cfg.checkpoint_every == 0 or done == cfg.steps:
             step = done
             checkpoints = run_dir / "checkpoints"
-            save_checkpoint(checkpoints / "last.pt", checkpoint_payload(trainer=trainer.state_dict()))
+            save_checkpoint(
+                checkpoints / "last.pt", checkpoint_payload(trainer=trainer.state_dict())
+            )
             save_checkpoint(
                 checkpoints / f"ema_{done:07d}.pt", checkpoint_payload(ema=trainer.ema_state_dict())
             )
 
-    csv_file.close()
     print(f"Done. Samples and checkpoints are in {run_dir}")
     return run_dir

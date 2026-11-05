@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def pick_device(setting: str = "auto") -> torch.device:

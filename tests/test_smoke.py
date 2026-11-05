@@ -88,16 +88,16 @@ def test_patch_sampler_skips_nodata(dataset: Path):
     assert onehot.shape == (16, N_LABEL_CHANNELS, 32, 32)
 
 
-TINY = dict(
-    batch_size=2,
-    gan_channels=32,
-    gan_z_channels=8,
-    disc_channels=8,
-    unet_channels=16,
-    unet_channel_mults="1,2,2",
-    sample_steps=3,
-    device="cpu",
-)
+TINY = {
+    "batch_size": 2,
+    "gan_channels": 32,
+    "gan_z_channels": 8,
+    "disc_channels": 8,
+    "unet_channels": 16,
+    "unet_channel_mults": "1,2,2",
+    "sample_steps": 3,
+    "device": "cpu",
+}
 
 
 @pytest.mark.parametrize("model", ["gan", "diffusion"])
@@ -115,7 +115,9 @@ def test_train_step_and_generate(dataset: Path, model: str, use_labels: bool):
     assert all(np.isfinite(v) for v in losses.values())
 
     # Fully convolutional: generate at a larger size than the training patches
-    big_labels = data.labels_to_onehot(scenes[0].labels[None, :128, :128], "cpu") if use_labels else None
+    big_labels = (
+        data.labels_to_onehot(scenes[0].labels[None, :128, :128], "cpu") if use_labels else None
+    )
     a = trainer.generate(big_labels, 1, 128, 128, seed=3)
     b = trainer.generate(big_labels, 1, 128, 128, seed=3)
     assert a.shape == (1, 4, 128, 128)
@@ -126,9 +128,9 @@ def test_train_step_and_generate(dataset: Path, model: str, use_labels: bool):
 @pytest.mark.parametrize("model", ["gan", "diffusion"])
 def test_cli_train_resume_sample(dataset: Path, model: str, monkeypatch):
     monkeypatch.chdir(dataset)
-    tiny_flags = [
-        f"--{k.replace('_', '-')}={v}" for k, v in TINY.items() if k != "device"
-    ] + ["--device=cpu"]
+    tiny_flags = [f"--{k.replace('_', '-')}={v}" for k, v in TINY.items() if k != "device"] + [
+        "--device=cpu"
+    ]
     common = ["--patch-size=64", "--log-every=1", "--sample-every=2", "--checkpoint-every=2"]
     main(["train", f"--model={model}", "--run-name=test", "--steps=4", *common, *tiny_flags])
 
@@ -141,12 +143,28 @@ def test_cli_train_resume_sample(dataset: Path, model: str, monkeypatch):
     assert (run / "checkpoints" / "ema_0000006.pt").exists()
     assert len((run / "losses.csv").read_text().strip().splitlines()) == 1 + 6
 
-    main(["sample", "--checkpoint", str(run / "checkpoints" / "ema_0000006.pt"), "--n=2",
-          "--device=cpu"])
+    main(
+        [
+            "sample",
+            "--checkpoint",
+            str(run / "checkpoints" / "ema_0000006.pt"),
+            "--n=2",
+            "--device=cpu",
+        ]
+    )
     assert (dataset / "generated" / "patches_seed0.png").exists()
 
     scene = data.find_naip_paths(dataset / "naip")[0]
-    main(["large", "--checkpoint", str(run / "checkpoints" / "last.pt"), "--scene", str(scene),
-          "--size=128", "--device=cpu"])
+    main(
+        [
+            "large",
+            "--checkpoint",
+            str(run / "checkpoints" / "last.pt"),
+            "--scene",
+            str(scene),
+            "--size=128",
+            "--device=cpu",
+        ]
+    )
     out = dataset / "generated" / f"{scene.stem}_r0_c0_s128"
     assert (out / "generated_0.png").exists() and (out / "labels.png").exists()

@@ -25,8 +25,8 @@ from __future__ import annotations
 import copy
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from torch.nn.utils.parametrizations import spectral_norm
 
 from .common import count_params, ema_update, seeded, seeded_randn

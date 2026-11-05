@@ -80,6 +80,8 @@ class TrainConfig:
     unet_channels: int = 64
     unet_channel_mults: str = "1,2,2,4"
     unet_attention: bool = True  # self-attention at the lowest resolution
+    # Trade compute for memory (needed for the defaults to fit in 4 GB of GPU memory)
+    gradient_checkpointing: bool = True
     lr_diffusion: float = 2e-4
     label_dropout: float = 0.1  # for classifier-free guidance
     sample_steps: int = 50

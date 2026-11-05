@@ -72,7 +72,9 @@ def main(argv: list[str] | None = None) -> None:
     large_parser.add_argument("--n", type=int, default=1)
     large_parser.add_argument("--out", default="generated")
 
-    kid_parser = commands.add_parser("kid", help="Kernel Inception Distance (needs --extra metrics)")
+    kid_parser = commands.add_parser(
+        "kid", help="Kernel Inception Distance (needs --extra metrics)"
+    )
     _sampling_flags(kid_parser)
     kid_parser.add_argument("--n", type=int, default=1000)
     kid_parser.add_argument("--batch-size", type=int, default=16)
